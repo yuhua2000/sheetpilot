@@ -5,11 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/yuhua2000/sheetpilot/internal/analysis"
+	"github.com/yuhua2000/sheetpilot/internal/dataops"
+	formulaPkg "github.com/yuhua2000/sheetpilot/internal/formula"
 	"github.com/yuhua2000/sheetpilot/internal/rangeop"
+	stylePkg "github.com/yuhua2000/sheetpilot/internal/style"
 	"github.com/yuhua2000/sheetpilot/internal/workbook"
 	"github.com/yuhua2000/sheetpilot/internal/worksheet"
 )
@@ -37,7 +42,7 @@ func NewServer() (*Server, error) {
 	s.mcpSrv = mcpSrv
 	s.registerTools()
 
-	slog.Info("MCP server created", "tools", 23)
+	slog.Info("MCP server created", "tools", 41)
 	return s, nil
 }
 
@@ -279,6 +284,188 @@ func (s *Server) registerTools() {
 			mcp.WithString("count", mcp.Required(), mcp.Description("Number of columns to delete")),
 		),
 		s.handleDeleteCols,
+	)
+
+	// Phase 2: Table info tools
+	s.mcpSrv.AddTool(
+		mcp.NewTool("table_info",
+			mcp.WithDescription("Get table structure information (boundaries, headers, columns)"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+		),
+		s.handleTableInfo,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("column_types",
+			mcp.WithDescription("Get column types by sampling data"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+		),
+		s.handleColumnTypes,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("sheet_overview",
+			mcp.WithDescription("Get sheet overview (row count, col count, column types, samples)"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+		),
+		s.handleSheetOverview,
+	)
+
+	// Phase 2: Data operation tools
+	s.mcpSrv.AddTool(
+		mcp.NewTool("add_computed_column",
+			mcp.WithDescription("Add a computed column with formula"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("col_name", mcp.Required(), mcp.Description("New column name")),
+			mcp.WithString("formula", mcp.Required(), mcp.Description("Formula template, use {column_name} for column references")),
+		),
+		s.handleAddComputedColumn,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("sort_table",
+			mcp.WithDescription("Sort table by columns"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("columns", mcp.Required(), mcp.Description("Comma-separated column names")),
+			mcp.WithString("order", mcp.Description("asc or desc (default: asc)")),
+		),
+		s.handleSortTable,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("filter_rows",
+			mcp.WithDescription("Filter rows by condition"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("column", mcp.Required(), mcp.Description("Column name")),
+			mcp.WithString("operator", mcp.Required(), mcp.Description("Operator: =, !=, >, <, >=, <=, contains")),
+			mcp.WithString("value", mcp.Required(), mcp.Description("Filter value")),
+		),
+		s.handleFilterRows,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("group_by",
+			mcp.WithDescription("Group by column and aggregate"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("group_column", mcp.Required(), mcp.Description("Group by column")),
+			mcp.WithString("agg_column", mcp.Required(), mcp.Description("Aggregate column")),
+			mcp.WithString("agg_func", mcp.Required(), mcp.Description("Aggregate function: sum, avg, count, min, max")),
+		),
+		s.handleGroupBy,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("fill_missing_values",
+			mcp.WithDescription("Fill missing values in a column"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("column", mcp.Required(), mcp.Description("Column name")),
+			mcp.WithString("default_value", mcp.Required(), mcp.Description("Default value to fill")),
+		),
+		s.handleFillMissingValues,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("replace_values",
+			mcp.WithDescription("Replace values in a column"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("column", mcp.Required(), mcp.Description("Column name")),
+			mcp.WithString("old_value", mcp.Required(), mcp.Description("Value to replace")),
+			mcp.WithString("new_value", mcp.Required(), mcp.Description("New value")),
+		),
+		s.handleReplaceValues,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("cleanup_sheet",
+			mcp.WithDescription("Cleanup sheet (remove empty rows, trim whitespace)"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+		),
+		s.handleCleanupSheet,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("deduplicate",
+			mcp.WithDescription("Remove duplicate rows"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("columns", mcp.Required(), mcp.Description("Comma-separated column names to check")),
+		),
+		s.handleDeduplicate,
+	)
+
+	// Phase 2: Formula tools
+	s.mcpSrv.AddTool(
+		mcp.NewTool("get_formula",
+			mcp.WithDescription("Get cell formula"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("cell", mcp.Required(), mcp.Description("Cell reference (e.g., A1)")),
+		),
+		s.handleGetFormula,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("set_formula",
+			mcp.WithDescription("Set cell formula"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("cell", mcp.Required(), mcp.Description("Cell reference (e.g., A1)")),
+			mcp.WithString("formula", mcp.Required(), mcp.Description("Formula (e.g., =SUM(A1:A10))")),
+		),
+		s.handleSetFormula,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("fill_formula_column",
+			mcp.WithDescription("Fill a formula down a column"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("column", mcp.Required(), mcp.Description("Column letter (e.g., C)")),
+			mcp.WithString("start_row", mcp.Required(), mcp.Description("Start row number")),
+			mcp.WithString("end_row", mcp.Required(), mcp.Description("End row number")),
+			mcp.WithString("formula_template", mcp.Required(), mcp.Description("Formula template with {row} placeholder")),
+		),
+		s.handleFillFormulaColumn,
+	)
+
+	// Phase 2: Style tools
+	s.mcpSrv.AddTool(
+		mcp.NewTool("auto_fit_columns",
+			mcp.WithDescription("Auto-fit column widths to content"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+		),
+		s.handleAutoFitColumns,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("auto_fit_rows",
+			mcp.WithDescription("Auto-fit row heights to content"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+		),
+		s.handleAutoFitRows,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("set_number_format",
+			mcp.WithDescription("Set number format for a cell"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("cell", mcp.Required(), mcp.Description("Cell reference (e.g., A1)")),
+			mcp.WithString("format", mcp.Required(), mcp.Description("Number format (e.g., #,##0.00, 0.00%, yyyy-mm-dd)")),
+		),
+		s.handleSetNumberFormat,
 	)
 
 	slog.Debug("MCP tools registered")
@@ -916,6 +1103,593 @@ func (s *Server) handleDeleteCols(ctx context.Context, req mcp.CallToolRequest) 
 	}
 
 	return mcpResult("ok"), nil
+}
+
+// Phase 2 handlers
+
+func (s *Server) handleTableInfo(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("getting table info", "workbook_id", id, "sheet", sheet)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	info, err := analysis.GetTableInfo(wb.File, sheet)
+	if err != nil {
+		slog.Error("get table info failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	data, _ := json.Marshal(info)
+	return mcpResult(string(data)), nil
+}
+
+func (s *Server) handleColumnTypes(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("getting column types", "workbook_id", id, "sheet", sheet)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	types, err := analysis.GetColumnTypes(wb.File, sheet, 100)
+	if err != nil {
+		slog.Error("get column types failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	data, _ := json.Marshal(types)
+	return mcpResult(string(data)), nil
+}
+
+func (s *Server) handleSheetOverview(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("getting sheet overview", "workbook_id", id, "sheet", sheet)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	overview, err := analysis.GetSheetOverview(wb.File, sheet)
+	if err != nil {
+		slog.Error("get sheet overview failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	data, _ := json.Marshal(overview)
+	return mcpResult(string(data)), nil
+}
+
+func (s *Server) handleAddComputedColumn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	colName, err := req.RequireString("col_name")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	formula, err := req.RequireString("formula")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Info("adding computed column", "workbook_id", id, "sheet", sheet, "col_name", colName)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := dataops.AddComputedColumn(wb.File, sheet, colName, formula); err != nil {
+		slog.Error("add computed column failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleSortTable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	columns, err := req.RequireString("columns")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	order := req.GetString("order", "asc")
+	ascending := order != "desc"
+
+	slog.Info("sorting table", "workbook_id", id, "sheet", sheet, "columns", columns, "order", order)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	cols := splitColumns(columns)
+	if err := dataops.SortTable(wb.File, sheet, cols, ascending); err != nil {
+		slog.Error("sort table failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleFilterRows(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	column, err := req.RequireString("column")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	operator, err := req.RequireString("operator")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	value, err := req.RequireString("value")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("filtering rows", "workbook_id", id, "sheet", sheet, "column", column, "operator", operator, "value", value)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	result, err := dataops.FilterRows(wb.File, sheet, column, operator, value)
+	if err != nil {
+		slog.Error("filter rows failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	data, _ := json.Marshal(result)
+	return mcpResult(string(data)), nil
+}
+
+func (s *Server) handleGroupBy(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	groupCol, err := req.RequireString("group_column")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	aggCol, err := req.RequireString("agg_column")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	aggFunc, err := req.RequireString("agg_func")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("group by", "workbook_id", id, "sheet", sheet, "group_col", groupCol, "agg_col", aggCol, "agg_func", aggFunc)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	resultSheet, err := dataops.GroupBy(wb.File, sheet, groupCol, aggCol, aggFunc)
+	if err != nil {
+		slog.Error("group by failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult(fmt.Sprintf("Group by completed. Result written to sheet: %s", resultSheet)), nil
+}
+
+func (s *Server) handleFillMissingValues(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	column, err := req.RequireString("column")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	defaultValue, err := req.RequireString("default_value")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Info("filling missing values", "workbook_id", id, "sheet", sheet, "column", column)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := dataops.FillMissingValues(wb.File, sheet, column, defaultValue); err != nil {
+		slog.Error("fill missing values failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleReplaceValues(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	column, err := req.RequireString("column")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	oldValue, err := req.RequireString("old_value")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	newValue, err := req.RequireString("new_value")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Info("replacing values", "workbook_id", id, "sheet", sheet, "column", column, "old", oldValue, "new", newValue)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := dataops.ReplaceValues(wb.File, sheet, column, oldValue, newValue); err != nil {
+		slog.Error("replace values failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleCleanupSheet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Info("cleaning up sheet", "workbook_id", id, "sheet", sheet)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := dataops.CleanupSheet(wb.File, sheet); err != nil {
+		slog.Error("cleanup sheet failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleDeduplicate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	columns, err := req.RequireString("columns")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Info("deduplicating", "workbook_id", id, "sheet", sheet, "columns", columns)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	cols := splitColumns(columns)
+	if err := dataops.Deduplicate(wb.File, sheet, cols); err != nil {
+		slog.Error("deduplicate failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleGetFormula(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	cell, err := req.RequireString("cell")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("getting formula", "workbook_id", id, "sheet", sheet, "cell", cell)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	formula, err := formulaPkg.GetFormula(wb.File, sheet, cell)
+	if err != nil {
+		slog.Error("get formula failed", "workbook_id", id, "sheet", sheet, "cell", cell, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult(formula), nil
+}
+
+func (s *Server) handleSetFormula(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	cell, err := req.RequireString("cell")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	formulaStr, err := req.RequireString("formula")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("setting formula", "workbook_id", id, "sheet", sheet, "cell", cell)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := formulaPkg.SetFormula(wb.File, sheet, cell, formulaStr); err != nil {
+		slog.Error("set formula failed", "workbook_id", id, "sheet", sheet, "cell", cell, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleFillFormulaColumn(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	column, err := req.RequireString("column")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	startRowStr, err := req.RequireString("start_row")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	endRowStr, err := req.RequireString("end_row")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	formulaTmpl, err := req.RequireString("formula_template")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	startRow := parseInt(startRowStr)
+	endRow := parseInt(endRowStr)
+
+	slog.Debug("filling formula column", "workbook_id", id, "sheet", sheet, "column", column, "start_row", startRow, "end_row", endRow)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := formulaPkg.FillFormulaColumn(wb.File, sheet, column, startRow, endRow, formulaTmpl); err != nil {
+		slog.Error("fill formula column failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleAutoFitColumns(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("auto fitting columns", "workbook_id", id, "sheet", sheet)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := stylePkg.AutoFitColumns(wb.File, sheet); err != nil {
+		slog.Error("auto fit columns failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleAutoFitRows(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("auto fitting rows", "workbook_id", id, "sheet", sheet)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := stylePkg.AutoFitRows(wb.File, sheet); err != nil {
+		slog.Error("auto fit rows failed", "workbook_id", id, "sheet", sheet, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func (s *Server) handleSetNumberFormat(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := req.RequireString("workbook_id")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	sheet, err := req.RequireString("sheet")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	cell, err := req.RequireString("cell")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	format, err := req.RequireString("format")
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	slog.Debug("setting number format", "workbook_id", id, "sheet", sheet, "cell", cell, "format", format)
+	wb, err := s.manager.Get(id)
+	if err != nil {
+		return mcpError(err.Error()), nil
+	}
+
+	if err := stylePkg.SetNumberFormat(wb.File, sheet, cell, format); err != nil {
+		slog.Error("set number format failed", "workbook_id", id, "sheet", sheet, "cell", cell, "error", err)
+		return mcpError(err.Error()), nil
+	}
+
+	return mcpResult("ok"), nil
+}
+
+func splitColumns(columns string) []string {
+	result := []string{}
+	for _, col := range splitString(columns, ",") {
+		col = trimSpace(col)
+		if col != "" {
+			result = append(result, col)
+		}
+	}
+	return result
+}
+
+func splitString(s, sep string) []string {
+	if s == "" {
+		return []string{}
+	}
+	return strings.Split(s, sep)
+}
+
+func trimSpace(s string) string {
+	return strings.TrimSpace(s)
 }
 
 func parseInt(s string) int {
