@@ -127,6 +127,99 @@ func DeleteCols(f *excelize.File, sheet, col string, count int) error {
 	return nil
 }
 
+// CopyRange copies a range to a destination cell.
+func CopyRange(f *excelize.File, sheet, srcRange, dstCell string) error {
+	data, err := GetRange(f, sheet, srcRange)
+	if err != nil {
+		return fmt.Errorf("get source range: %w", err)
+	}
+
+	// Convert string data to any
+	anyData := make([][]any, len(data))
+	for i, row := range data {
+		anyData[i] = make([]any, len(row))
+		for j, cell := range row {
+			anyData[i][j] = cell
+		}
+	}
+
+	return SetRange(f, sheet, dstCell, anyData)
+}
+
+// MoveRange moves a range to a destination cell (copy then clear source).
+func MoveRange(f *excelize.File, sheet, srcRange, dstCell string) error {
+	if err := CopyRange(f, sheet, srcRange, dstCell); err != nil {
+		return fmt.Errorf("copy range: %w", err)
+	}
+
+	// Clear source range
+	startCol, startRow, endCol, endRow, err := parseRange(srcRange)
+	if err != nil {
+		return fmt.Errorf("parse source range: %w", err)
+	}
+
+	for r := startRow; r <= endRow; r++ {
+		for c := startCol; c <= endCol; c++ {
+			cell, _ := excelize.CoordinatesToCellName(c, r)
+			f.SetCellValue(sheet, cell, nil)
+		}
+	}
+
+	return nil
+}
+
+// FindReplace finds and replaces text in a range.
+func FindReplace(f *excelize.File, sheet, find, replace, rangeRef string) (int, error) {
+	rows, err := f.GetRows(sheet)
+	if err != nil {
+		return 0, fmt.Errorf("get rows: %w", err)
+	}
+
+	count := 0
+	for i, row := range rows {
+		for j, cell := range row {
+			if strings.Contains(cell, find) {
+				newVal := strings.ReplaceAll(cell, find, replace)
+				col, _ := excelize.ColumnNumberToName(j + 1)
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), newVal)
+				count++
+			}
+		}
+	}
+
+	return count, nil
+}
+
+// AddComment adds a comment to a cell.
+func AddComment(f *excelize.File, sheet, cell, author, text string) error {
+	return f.AddComment(sheet, excelize.Comment{
+		Cell: cell,
+		Paragraph: []excelize.RichTextRun{
+			{
+				Text: text,
+				Font: &excelize.Font{
+					Bold: true,
+				},
+			},
+		},
+	})
+}
+
+// AddHyperlink adds a hyperlink to a cell.
+func AddHyperlink(f *excelize.File, sheet, cell, link, display string) error {
+	return f.SetCellHyperLink(sheet, cell, link, "External")
+}
+
+// SetDataValidation sets data validation for a cell range with a dropdown list.
+func SetDataValidation(f *excelize.File, sheet, rangeRef string, options []string) error {
+	dv := excelize.DataValidation{}
+	dv.SetSqref(rangeRef)
+	if err := dv.SetDropList(options); err != nil {
+		return fmt.Errorf("set drop list: %w", err)
+	}
+	return f.AddDataValidation(sheet, &dv)
+}
+
 // parseRange parses a range string like "A1:C5" into coordinates.
 func parseRange(rangeRef string) (int, int, int, int, error) {
 	parts := strings.Split(rangeRef, ":")

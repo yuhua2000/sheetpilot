@@ -141,3 +141,72 @@ func TestDeleteCols(t *testing.T) {
 	val, _ := f.GetCellValue("Sheet1", "B1")
 	require.Equal(t, "col3", val)
 }
+
+func TestCopyRange(t *testing.T) {
+	f := newTestFile(t)
+	f.SetCellValue("Sheet1", "A1", "a")
+	f.SetCellValue("Sheet1", "B1", "b")
+	f.SetCellValue("Sheet1", "A2", "c")
+	f.SetCellValue("Sheet1", "B2", "d")
+
+	err := CopyRange(f, "Sheet1", "A1:B2", "D1")
+	require.NoError(t, err)
+
+	val, _ := f.GetCellValue("Sheet1", "D1")
+	require.Equal(t, "a", val)
+
+	val, _ = f.GetCellValue("Sheet1", "E2")
+	require.Equal(t, "d", val)
+}
+
+func TestMoveRange(t *testing.T) {
+	f := newTestFile(t)
+	f.SetCellValue("Sheet1", "A1", "a")
+	f.SetCellValue("Sheet1", "B1", "b")
+
+	err := MoveRange(f, "Sheet1", "A1:B1", "D1")
+	require.NoError(t, err)
+
+	// Source should be cleared
+	val, _ := f.GetCellValue("Sheet1", "A1")
+	require.Empty(t, val)
+
+	// Destination should have value
+	val, _ = f.GetCellValue("Sheet1", "D1")
+	require.Equal(t, "a", val)
+}
+
+func TestFindReplace(t *testing.T) {
+	f := newTestFile(t)
+	f.SetCellValue("Sheet1", "A1", "Hello World")
+	f.SetCellValue("Sheet1", "A2", "Hello Go")
+	f.SetCellValue("Sheet1", "A3", "Hi World")
+
+	count, err := FindReplace(f, "Sheet1", "Hello", "Hi", "")
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+
+	val, _ := f.GetCellValue("Sheet1", "A1")
+	require.Equal(t, "Hi World", val)
+}
+
+func TestAddComment(t *testing.T) {
+	f := newTestFile(t)
+
+	err := AddComment(f, "Sheet1", "A1", "test", "This is a comment")
+	require.NoError(t, err)
+}
+
+func TestAddHyperlink(t *testing.T) {
+	f := newTestFile(t)
+
+	err := AddHyperlink(f, "Sheet1", "A1", "https://example.com", "Example")
+	require.NoError(t, err)
+}
+
+func TestSetDataValidation(t *testing.T) {
+	f := newTestFile(t)
+
+	err := SetDataValidation(f, "Sheet1", "A1:A10", []string{"Yes", "No", "Maybe"})
+	require.NoError(t, err)
+}
