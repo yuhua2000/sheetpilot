@@ -192,7 +192,22 @@ func SetStyle(f *excelize.File, sheet, cell string, opts StyleOptions) error {
 	if err != nil {
 		return fmt.Errorf("create style: %w", err)
 	}
-	return f.SetCellStyle(sheet, cell, cell, styleID)
+
+	// Support range like "F2:F51" or single cell like "F2"
+	startCell, endCell := parseCellRange(cell)
+	return f.SetCellStyle(sheet, startCell, endCell, styleID)
+}
+
+// parseCellRange parses a cell range or single cell into start and end cells.
+func parseCellRange(cell string) (string, string) {
+	// Check if it's a range like "A1:B5"
+	for i, c := range cell {
+		if c == ':' {
+			return cell[:i], cell[i+1:]
+		}
+	}
+	// Single cell
+	return cell, cell
 }
 
 // SetConditionalFormatting adds conditional formatting to a range.

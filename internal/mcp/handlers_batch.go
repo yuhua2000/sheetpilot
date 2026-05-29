@@ -76,23 +76,19 @@ func (s *Server) handleBatchUpdate(ctx context.Context, req mcp.CallToolRequest)
 
 // executeOperation executes a single operation.
 func (s *Server) executeOperation(ctx context.Context, op Operation) (any, error) {
-	// Create a mock request for the tool
-	params := map[string]any{
-		"name":      op.Tool,
-		"arguments": op.Params,
-	}
-
-	paramsJSON, _ := json.Marshal(params)
-
 	// Find and execute the tool handler
 	handler := s.getToolHandler(op.Tool)
 	if handler == nil {
 		return nil, fmt.Errorf("unknown tool: %s", op.Tool)
 	}
 
-	// Create CallToolRequest
-	var toolReq mcp.CallToolRequest
-	json.Unmarshal(paramsJSON, &toolReq)
+	// Create CallToolRequest with proper structure
+	toolReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      op.Tool,
+			Arguments: op.Params,
+		},
+	}
 
 	// Execute
 	result, err := handler(ctx, toolReq)

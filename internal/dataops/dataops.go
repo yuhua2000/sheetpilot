@@ -104,6 +104,7 @@ func CleanupSheet(f *excelize.File, sheet string) error {
 }
 
 // Deduplicate removes duplicate rows based on specified columns.
+// cols can be column letters (A, B) or column names (部门, 工资).
 func Deduplicate(f *excelize.File, sheet string, cols []string) error {
 	rows, err := f.GetRows(sheet)
 	if err != nil {
@@ -117,10 +118,11 @@ func Deduplicate(f *excelize.File, sheet string, cols []string) error {
 	// Build column index map
 	colIndices := make([]int, len(cols))
 	for i, col := range cols {
-		idx, err := excelize.ColumnNameToNumber(col)
+		colLetter, err := resolveColumnRef(f, sheet, col)
 		if err != nil {
 			return fmt.Errorf("column %s not found: %w", col, err)
 		}
+		idx, _ := excelize.ColumnNameToNumber(colLetter)
 		colIndices[i] = idx - 1
 	}
 
@@ -156,6 +158,7 @@ func Deduplicate(f *excelize.File, sheet string, cols []string) error {
 }
 
 // SortTable sorts the table by specified columns.
+// sortCols can be column letters (A, B) or column names (部门, 工资).
 func SortTable(f *excelize.File, sheet string, sortCols []string, ascending bool) error {
 	rows, err := f.GetRows(sheet)
 	if err != nil {
@@ -169,10 +172,11 @@ func SortTable(f *excelize.File, sheet string, sortCols []string, ascending bool
 	// Build column index map
 	colIndices := make([]int, len(sortCols))
 	for i, col := range sortCols {
-		idx, err := excelize.ColumnNameToNumber(col)
+		colLetter, err := resolveColumnRef(f, sheet, col)
 		if err != nil {
 			return fmt.Errorf("column %s not found: %w", col, err)
 		}
+		idx, _ := excelize.ColumnNameToNumber(colLetter)
 		colIndices[i] = idx - 1
 	}
 
@@ -214,6 +218,7 @@ func SortTable(f *excelize.File, sheet string, sortCols []string, ascending bool
 }
 
 // FilterRows filters rows based on a condition.
+// col can be column letter (A, B) or column name (部门, 工资).
 func FilterRows(f *excelize.File, sheet, col, op, value string) ([][]string, error) {
 	rows, err := f.GetRows(sheet)
 	if err != nil {
@@ -224,10 +229,12 @@ func FilterRows(f *excelize.File, sheet, col, op, value string) ([][]string, err
 		return [][]string{}, nil
 	}
 
-	colIdx, err := excelize.ColumnNameToNumber(col)
+	colLetter, err := resolveColumnRef(f, sheet, col)
 	if err != nil {
-		return nil, fmt.Errorf("column name to number: %w", err)
+		return nil, fmt.Errorf("column %s not found: %w", col, err)
 	}
+
+	colIdx, _ := excelize.ColumnNameToNumber(colLetter)
 
 	result := [][]string{rows[0]} // Include header
 	for _, row := range rows[1:] {
@@ -242,6 +249,7 @@ func FilterRows(f *excelize.File, sheet, col, op, value string) ([][]string, err
 // GroupBy groups rows by a column and applies aggregation.
 // GroupBy groups rows by a column and applies aggregation using Excel formulas.
 // Result is written to a new sheet with formulas that auto-update.
+// groupCol and aggCol can be column letters (A, B) or column names (部门, 工资).
 func GroupBy(f *excelize.File, sheet, groupCol, aggCol, aggFunc string) (string, error) {
 	rows, err := f.GetRows(sheet)
 	if err != nil {
@@ -252,18 +260,26 @@ func GroupBy(f *excelize.File, sheet, groupCol, aggCol, aggFunc string) (string,
 		return "", fmt.Errorf("sheet has no data rows")
 	}
 
-	groupIdx, err := excelize.ColumnNameToNumber(groupCol)
+	// Resolve column references (support both letter and name)
+	groupColLetter, err := resolveColumnRef(f, sheet, groupCol)
 	if err != nil {
-		return "", fmt.Errorf("column name to number: %w", err)
+		return "", fmt.Errorf("resolve group column: %w", err)
 	}
 
+	aggColLetter, err := resolveColumnRef(f, sheet, aggCol)
+	if err != nil {
+		return "", fmt.Errorf("resolve agg column: %w", err)
+	}
+
+	groupIdx, _ := excelize.ColumnNameToNumber(groupColLetter)
+
 	// Get actual column names from header row
-	groupColName := groupCol
-	aggColName := aggCol
+	groupColName := groupColLetter
+	aggColName := aggColLetter
 	if groupIdx-1 < len(rows[0]) {
 		groupColName = rows[0][groupIdx-1]
 	}
-	aggIdx, _ := excelize.ColumnNameToNumber(aggCol)
+	aggIdx, _ := excelize.ColumnNameToNumber(aggColLetter)
 	if aggIdx-1 < len(rows[0]) {
 		aggColName = rows[0][aggIdx-1]
 	}
@@ -285,11 +301,54 @@ func GroupBy(f *excelize.File, sheet, groupCol, aggCol, aggFunc string) (string,
 		f.SetCellValue(resultSheet, fmt.Sprintf("A%d", row), group)
 
 		// Build Excel formula (SUMIFS, COUNTIFS, etc.)
-		formula := buildGroupByFormula(aggFunc, sheet, groupCol, aggCol, group, rows)
+		formula := buildGroupByFormula(aggFunc, sheet, groupColLetter, aggColLetter, group, rows)
 		f.SetCellFormula(resultSheet, fmt.Sprintf("B%d", row), formula)
 	}
 
 	return resultSheet, nil
+}
+
+// resolveColumnRef resolves a column reference (letter or name) to a column letter.
+// If the input is already a column letter (A, B, AA, etc.), it returns as-is.
+// If the input is a column name (部门, 工资, etc.), it finds the corresponding letter.
+func resolveColumnRef(f *excelize.File, sheet, colRef string) (string, error) {
+	// Check if it's already a column letter (1-3 characters, all uppercase)
+	if len(colRef) >= 1 && len(colRef) <= 3 {
+		allUpper := true
+		for _, c := range colRef {
+			if c < 'A' || c > 'Z' {
+				allUpper = false
+				break
+			}
+		}
+		if allUpper {
+			// Validate it's a real column
+			_, err := excelize.ColumnNameToNumber(colRef)
+			if err == nil {
+				return colRef, nil
+			}
+		}
+	}
+
+	// Try to find column by name in header row
+	rows, err := f.GetRows(sheet)
+	if err != nil {
+		return "", fmt.Errorf("get rows: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return "", fmt.Errorf("sheet has no data")
+	}
+
+	// Search for column name in header row
+	for i, cell := range rows[0] {
+		if cell == colRef {
+			colLetter, _ := excelize.ColumnNumberToName(i + 1)
+			return colLetter, nil
+		}
+	}
+
+	return "", fmt.Errorf("column '%s' not found in header row", colRef)
 }
 
 // getUniqueValues returns unique values from a column.
@@ -311,30 +370,31 @@ func getUniqueValues(rows [][]string, colIdx int) []string {
 // buildGroupByFormula creates an Excel formula for group by aggregation.
 func buildGroupByFormula(aggFunc, sheet, groupCol, aggCol, groupValue string, rows [][]string) string {
 	// Get data range (skip header)
-	dataRange := fmt.Sprintf("%s2:%s%d", groupCol, groupCol, len(rows))
+	groupRange := fmt.Sprintf("%s2:%s%d", groupCol, groupCol, len(rows))
+	aggRange := fmt.Sprintf("%s2:%s%d", aggCol, aggCol, len(rows))
 
 	// Build criteria - need to handle the group value
 	criteria := fmt.Sprintf("\"%s\"", groupValue)
 
 	switch strings.ToLower(aggFunc) {
 	case "sum":
-		return fmt.Sprintf("=SUMIFS(%s!%s:%s,%s!%s:%s,%s)",
-			sheet, aggCol, aggCol, sheet, dataRange, dataRange, criteria)
+		return fmt.Sprintf("=SUMIFS(%s!%s,%s!%s,%s)",
+			sheet, aggRange, sheet, groupRange, criteria)
 	case "count":
-		return fmt.Sprintf("=COUNTIF(%s!%s:%s,%s)",
-			sheet, dataRange, dataRange, criteria)
+		return fmt.Sprintf("=COUNTIF(%s!%s,%s)",
+			sheet, groupRange, criteria)
 	case "avg", "average":
-		return fmt.Sprintf("=AVERAGEIF(%s!%s:%s,%s,%s!%s:%s)",
-			sheet, dataRange, dataRange, criteria, sheet, aggCol, aggCol)
+		return fmt.Sprintf("=AVERAGEIF(%s!%s,%s,%s!%s)",
+			sheet, groupRange, criteria, sheet, aggRange)
 	case "min":
-		return fmt.Sprintf("=MINIFS(%s!%s:%s,%s!%s:%s,%s)",
-			sheet, aggCol, aggCol, sheet, dataRange, dataRange, criteria)
+		return fmt.Sprintf("=MINIFS(%s!%s,%s!%s,%s)",
+			sheet, aggRange, sheet, groupRange, criteria)
 	case "max":
-		return fmt.Sprintf("=MAXIFS(%s!%s:%s,%s!%s:%s,%s)",
-			sheet, aggCol, aggCol, sheet, dataRange, dataRange, criteria)
+		return fmt.Sprintf("=MAXIFS(%s!%s,%s!%s,%s)",
+			sheet, aggRange, sheet, groupRange, criteria)
 	default:
-		return fmt.Sprintf("=SUMIFS(%s!%s:%s,%s!%s:%s,%s)",
-			sheet, aggCol, aggCol, sheet, dataRange, dataRange, criteria)
+		return fmt.Sprintf("=SUMIFS(%s!%s,%s!%s,%s)",
+			sheet, aggRange, sheet, groupRange, criteria)
 	}
 }
 
