@@ -177,3 +177,63 @@ func TestGroupBy(t *testing.T) {
 	formulaB2, _ := f.GetCellFormula(resultSheet, "B2")
 	require.NotEmpty(t, formulaB2)
 }
+
+func TestSplitSheet(t *testing.T) {
+	f := newTestFile(t)
+
+	f.SetCellValue("Sheet1", "A1", "Region")
+	f.SetCellValue("Sheet1", "B1", "Sales")
+	f.SetCellValue("Sheet1", "A2", "North")
+	f.SetCellValue("Sheet1", "B2", 100)
+	f.SetCellValue("Sheet1", "A3", "South")
+	f.SetCellValue("Sheet1", "B3", 200)
+	f.SetCellValue("Sheet1", "A4", "North")
+	f.SetCellValue("Sheet1", "B4", 150)
+
+	newSheets, err := SplitSheet(f, "Sheet1", "A")
+	require.NoError(t, err)
+	require.Len(t, newSheets, 2)
+
+	// Verify new sheets exist
+	sheets := f.GetSheetList()
+	require.Contains(t, sheets, "Sheet1_North")
+	require.Contains(t, sheets, "Sheet1_South")
+
+	// Verify data in North sheet
+	val, _ := f.GetCellValue("Sheet1_North", "B2")
+	require.Equal(t, "100", val)
+}
+
+func TestMergeSheets(t *testing.T) {
+	f := newTestFile(t)
+
+	// Create test sheets
+	f.NewSheet("Sheet2")
+	f.SetCellValue("Sheet1", "A1", "Name")
+	f.SetCellValue("Sheet1", "B1", "Value")
+	f.SetCellValue("Sheet1", "A2", "A")
+	f.SetCellValue("Sheet1", "B2", 10)
+
+	f.SetCellValue("Sheet2", "A1", "Name")
+	f.SetCellValue("Sheet2", "B1", "Value")
+	f.SetCellValue("Sheet2", "A2", "B")
+	f.SetCellValue("Sheet2", "B2", 20)
+
+	err := MergeSheets(f, []string{"Sheet1", "Sheet2"}, "Merged")
+	require.NoError(t, err)
+
+	// Verify merged sheet
+	sheets := f.GetSheetList()
+	require.Contains(t, sheets, "Merged")
+
+	// Verify header
+	header, _ := f.GetCellValue("Merged", "A1")
+	require.Equal(t, "Name", header)
+
+	// Verify data
+	valA2, _ := f.GetCellValue("Merged", "A2")
+	require.Equal(t, "A", valA2)
+
+	valA3, _ := f.GetCellValue("Merged", "A3")
+	require.Equal(t, "B", valA3)
+}

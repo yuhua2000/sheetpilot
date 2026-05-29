@@ -31,7 +31,7 @@ func NewServer() (*Server, error) {
 	s.mcpSrv = mcpSrv
 	s.registerTools()
 
-	slog.Info("MCP server created", "tools", 46)
+	slog.Info("MCP server created", "tools", 61)
 	return s, nil
 }
 
@@ -73,6 +73,18 @@ func (s *Server) registerTools() {
 
 	// Common tools
 	s.registerCommonTools()
+
+	// Phase 3: Chart tools
+	s.registerChartTools()
+
+	// Phase 3: Advanced style tools
+	s.registerAdvancedStyleTools()
+
+	// Phase 3: Merge cell tools
+	s.registerMergeCellTools()
+
+	// Phase 3: Batch tools
+	s.registerBatchTools()
 
 	slog.Debug("MCP tools registered")
 }
@@ -416,6 +428,26 @@ func (s *Server) registerDataOpsTools() {
 			mcp.WithString("columns", mcp.Required(), mcp.Description("Comma-separated column names to check")),
 		),
 		s.handleDeduplicate,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("split_sheet",
+			mcp.WithDescription("Split sheet into multiple sheets by column value"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheet", mcp.Required(), mcp.Description("Sheet name")),
+			mcp.WithString("column", mcp.Required(), mcp.Description("Column to split by")),
+		),
+		s.handleSplitSheet,
+	)
+
+	s.mcpSrv.AddTool(
+		mcp.NewTool("merge_sheets",
+			mcp.WithDescription("Merge multiple sheets into one"),
+			mcp.WithString("workbook_id", mcp.Required(), mcp.Description("Workbook ID")),
+			mcp.WithString("sheets", mcp.Required(), mcp.Description("Comma-separated sheet names to merge")),
+			mcp.WithString("dest_sheet", mcp.Required(), mcp.Description("Destination sheet name")),
+		),
+		s.handleMergeSheets,
 	)
 }
 

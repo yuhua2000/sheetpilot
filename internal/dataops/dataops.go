@@ -437,3 +437,105 @@ func aggregate(values []float64, fn string) float64 {
 		return 0
 	}
 }
+
+// SplitSheet splits a sheet into multiple sheets based on a column value.
+func SplitSheet(f *excelize.File, sheet, col string) ([]string, error) {
+	rows, err := f.GetRows(sheet)
+	if err != nil {
+		return nil, fmt.Errorf("get rows: %w", err)
+	}
+
+	if len(rows) < 2 {
+		return nil, fmt.Errorf("sheet has no data rows")
+	}
+
+	colIdx, err := excelize.ColumnNameToNumber(col)
+	if err != nil {
+		return nil, fmt.Errorf("column name to number: %w", err)
+	}
+
+	// Group rows by column value
+	groups := make(map[string][][]string)
+	for _, row := range rows[1:] {
+		if colIdx-1 < len(row) {
+			key := row[colIdx-1]
+			groups[key] = append(groups[key], row)
+		}
+	}
+
+	// Create new sheets for each group
+	var result []string
+	for key, groupRows := range groups {
+		newSheet := fmt.Sprintf("%s_%s", sheet, key)
+		f.NewSheet(newSheet)
+
+		// Write header
+		for j, cell := range rows[0] {
+			colName, _ := excelize.ColumnNumberToName(j + 1)
+			f.SetCellValue(newSheet, fmt.Sprintf("%s1", colName), cell)
+		}
+
+		// Write data rows
+		for i, row := range groupRows {
+			for j, cell := range row {
+				colName, _ := excelize.ColumnNumberToName(j + 1)
+				f.SetCellValue(newSheet, fmt.Sprintf("%s%d", colName, i+2), cell)
+			}
+		}
+
+		result = append(result, newSheet)
+	}
+
+	return result, nil
+}
+
+// MergeSheets merges multiple sheets into one.
+func MergeSheets(f *excelize.File, sheets []string, destSheet string) error {
+	if len(sheets) == 0 {
+		return fmt.Errorf("no sheets to merge")
+	}
+
+	// Create destination sheet
+	f.NewSheet(destSheet)
+
+	// Track if header is written
+	headerWritten := false
+	destRow := 1
+
+	for _, sheet := range sheets {
+		rows, err := f.GetRows(sheet)
+		if err != nil {
+			return fmt.Errorf("get rows from %s: %w", sheet, err)
+		}
+
+		if len(rows) == 0 {
+			continue
+		}
+
+		startIdx := 0
+		if !headerWritten {
+			// Write header from first sheet
+			for j, cell := range rows[0] {
+				colName, _ := excelize.ColumnNumberToName(j + 1)
+				f.SetCellValue(destSheet, fmt.Sprintf("%s%d", colName, destRow), cell)
+			}
+			headerWritten = true
+			destRow++
+			startIdx = 1
+		} else {
+			// Skip header for subsequent sheets
+			startIdx = 1
+		}
+
+		// Write data rows
+		for i := startIdx; i < len(rows); i++ {
+			for j, cell := range rows[i] {
+				colName, _ := excelize.ColumnNumberToName(j + 1)
+				f.SetCellValue(destSheet, fmt.Sprintf("%s%d", colName, destRow), cell)
+			}
+			destRow++
+		}
+	}
+
+	return nil
+}

@@ -220,6 +220,37 @@ func SetDataValidation(f *excelize.File, sheet, rangeRef string, options []strin
 	return f.AddDataValidation(sheet, &dv)
 }
 
+// MergeCells merges a range of cells.
+// rangeRef should be like "A1:C3" where A1 is top-left and C3 is bottom-right.
+func MergeCells(f *excelize.File, sheet, topLeft, bottomRight string) error {
+	if err := f.MergeCell(sheet, topLeft, bottomRight); err != nil {
+		return fmt.Errorf("merge cells: %w", err)
+	}
+	return nil
+}
+
+// UnmergeCells unmerges a range of cells.
+func UnmergeCells(f *excelize.File, sheet, topLeft, bottomRight string) error {
+	if err := f.UnmergeCell(sheet, topLeft, bottomRight); err != nil {
+		return fmt.Errorf("unmerge cells: %w", err)
+	}
+	return nil
+}
+
+// GetMergedCells returns all merged cell ranges in a sheet.
+func GetMergedCells(f *excelize.File, sheet string) ([]string, error) {
+	mergedCells, err := f.GetMergeCells(sheet)
+	if err != nil {
+		return nil, fmt.Errorf("get merged cells: %w", err)
+	}
+
+	result := make([]string, len(mergedCells))
+	for i, mc := range mergedCells {
+		result[i] = mc.GetStartAxis() + ":" + mc.GetEndAxis()
+	}
+	return result, nil
+}
+
 // parseRange parses a range string like "A1:C5" into coordinates.
 func parseRange(rangeRef string) (int, int, int, int, error) {
 	parts := strings.Split(rangeRef, ":")

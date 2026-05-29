@@ -210,3 +210,50 @@ func TestSetDataValidation(t *testing.T) {
 	err := SetDataValidation(f, "Sheet1", "A1:A10", []string{"Yes", "No", "Maybe"})
 	require.NoError(t, err)
 }
+
+func TestMergeCells(t *testing.T) {
+	f := newTestFile(t)
+
+	err := MergeCells(f, "Sheet1", "A1", "C1")
+	require.NoError(t, err)
+
+	// Verify merge
+	merged, err := GetMergedCells(f, "Sheet1")
+	require.NoError(t, err)
+	require.Len(t, merged, 1)
+}
+
+func TestUnmergeCells(t *testing.T) {
+	f := newTestFile(t)
+
+	// First merge
+	err := MergeCells(f, "Sheet1", "A1", "C1")
+	require.NoError(t, err)
+
+	// Then unmerge
+	err = UnmergeCells(f, "Sheet1", "A1", "C1")
+	require.NoError(t, err)
+
+	// Verify unmerge
+	merged, err := GetMergedCells(f, "Sheet1")
+	require.NoError(t, err)
+	require.Len(t, merged, 0)
+}
+
+func TestGetMergedCells(t *testing.T) {
+	f := newTestFile(t)
+
+	// Initially no merged cells
+	merged, err := GetMergedCells(f, "Sheet1")
+	require.NoError(t, err)
+	require.Len(t, merged, 0)
+
+	// Merge some cells
+	MergeCells(f, "Sheet1", "A1", "B1")
+	MergeCells(f, "Sheet1", "A3", "B3")
+
+	// Get merged cells
+	merged, err = GetMergedCells(f, "Sheet1")
+	require.NoError(t, err)
+	require.Len(t, merged, 2)
+}

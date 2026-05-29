@@ -91,3 +91,59 @@ func TestGetNumFmtID(t *testing.T) {
 		})
 	}
 }
+
+func TestSetStyle(t *testing.T) {
+	f := newTestFile(t)
+
+	opts := StyleOptions{
+		Bold:      "true",
+		BgColor:   "#FF0000",
+		FontColor: "#FFFFFF",
+		Align:     "center",
+		Border:    "thin",
+	}
+
+	err := SetStyle(f, "Sheet1", "A1", opts)
+	require.NoError(t, err)
+}
+
+func TestSetConditionalFormatting(t *testing.T) {
+	f := newTestFile(t)
+	f.SetCellValue("Sheet1", "A1", 10)
+	f.SetCellValue("Sheet1", "A2", 20)
+	f.SetCellValue("Sheet1", "A3", 5)
+
+	err := SetConditionalFormatting(f, "Sheet1", "A1:A3", "less_than", "10", "#FF0000", "#FFFFFF")
+	require.NoError(t, err)
+}
+
+func TestFreezePanes(t *testing.T) {
+	f := newTestFile(t)
+
+	err := FreezePanes(f, "Sheet1", "1", "0")
+	require.NoError(t, err)
+}
+
+func TestAddFilter(t *testing.T) {
+	f := newTestFile(t)
+	f.SetCellValue("Sheet1", "A1", "Name")
+	f.SetCellValue("Sheet1", "B1", "Value")
+	f.SetCellValue("Sheet1", "A2", "A")
+	f.SetCellValue("Sheet1", "B2", 10)
+
+	err := AddFilter(f, "Sheet1", "A1:B2")
+	require.NoError(t, err)
+}
+
+func TestFormatAsTable(t *testing.T) {
+	f := newTestFile(t)
+	f.SetCellValue("Sheet1", "A1", "Name")
+	f.SetCellValue("Sheet1", "B1", "Value")
+	f.SetCellValue("Sheet1", "A2", "A")
+	f.SetCellValue("Sheet1", "B2", 10)
+	f.SetCellValue("Sheet1", "A3", "B")
+	f.SetCellValue("Sheet1", "B3", 20)
+
+	err := FormatAsTable(f, "Sheet1", "A1:B3", "#4472C4", true)
+	require.NoError(t, err)
+}
