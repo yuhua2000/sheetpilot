@@ -118,12 +118,11 @@ func Deduplicate(f *excelize.File, sheet string, cols []string) error {
 	// Build column index map
 	colIndices := make([]int, len(cols))
 	for i, col := range cols {
-		colLetter, err := resolveColumnRef(f, sheet, col)
+		colIdx, err := resolveColumnIndex(f, sheet, col)
 		if err != nil {
 			return fmt.Errorf("column %s not found: %w", col, err)
 		}
-		idx, _ := excelize.ColumnNameToNumber(colLetter)
-		colIndices[i] = idx - 1
+		colIndices[i] = colIdx
 	}
 
 	// Track seen values
@@ -172,12 +171,11 @@ func SortTable(f *excelize.File, sheet string, sortCols []string, ascending bool
 	// Build column index map
 	colIndices := make([]int, len(sortCols))
 	for i, col := range sortCols {
-		colLetter, err := resolveColumnRef(f, sheet, col)
+		colIdx, err := resolveColumnIndex(f, sheet, col)
 		if err != nil {
 			return fmt.Errorf("column %s not found: %w", col, err)
 		}
-		idx, _ := excelize.ColumnNameToNumber(colLetter)
-		colIndices[i] = idx - 1
+		colIndices[i] = colIdx
 	}
 
 	// Sort data rows (skip header)
@@ -229,16 +227,14 @@ func FilterRows(f *excelize.File, sheet, col, op, value string) ([][]string, err
 		return [][]string{}, nil
 	}
 
-	colLetter, err := resolveColumnRef(f, sheet, col)
+	colIdx, err := resolveColumnIndex(f, sheet, col)
 	if err != nil {
 		return nil, fmt.Errorf("column %s not found: %w", col, err)
 	}
 
-	colIdx, _ := excelize.ColumnNameToNumber(colLetter)
-
 	result := [][]string{rows[0]} // Include header
 	for _, row := range rows[1:] {
-		if colIdx-1 < len(row) && matchCondition(row[colIdx-1], op, value) {
+		if colIdx < len(row) && matchCondition(row[colIdx], op, value) {
 			result = append(result, row)
 		}
 	}
@@ -312,7 +308,7 @@ func GroupBy(f *excelize.File, sheet, groupCol, aggCol, aggFunc string) (string,
 // If the input is already a column letter (A, B, AA, etc.), it returns as-is.
 // If the input is a column name (部门, 工资, etc.), it finds the corresponding letter.
 func resolveColumnRef(f *excelize.File, sheet, colRef string) (string, error) {
-	// Check if it's already a column letter (1-3 characters, all uppercase)
+	// Check if it's already a column letter (1-3 characters, all uppercase ASCII)
 	if len(colRef) >= 1 && len(colRef) <= 3 {
 		allUpper := true
 		for _, c := range colRef {
@@ -322,7 +318,6 @@ func resolveColumnRef(f *excelize.File, sheet, colRef string) (string, error) {
 			}
 		}
 		if allUpper {
-			// Validate it's a real column
 			_, err := excelize.ColumnNameToNumber(colRef)
 			if err == nil {
 				return colRef, nil
@@ -340,7 +335,6 @@ func resolveColumnRef(f *excelize.File, sheet, colRef string) (string, error) {
 		return "", fmt.Errorf("sheet has no data")
 	}
 
-	// Search for column name in header row
 	for i, cell := range rows[0] {
 		if cell == colRef {
 			colLetter, _ := excelize.ColumnNumberToName(i + 1)
@@ -349,6 +343,44 @@ func resolveColumnRef(f *excelize.File, sheet, colRef string) (string, error) {
 	}
 
 	return "", fmt.Errorf("column '%s' not found in header row", colRef)
+}
+
+// resolveColumnIndex resolves a column reference (letter or name) to a 0-based column index.
+func resolveColumnIndex(f *excelize.File, sheet, colRef string) (int, error) {
+	// Try as column letter first
+	if len(colRef) >= 1 && len(colRef) <= 3 {
+		allUpper := true
+		for _, c := range colRef {
+			if c < 'A' || c > 'Z' {
+				allUpper = false
+				break
+			}
+		}
+		if allUpper {
+			idx, err := excelize.ColumnNameToNumber(colRef)
+			if err == nil {
+				return idx - 1, nil
+			}
+		}
+	}
+
+	// Try to find column by name in header row
+	rows, err := f.GetRows(sheet)
+	if err != nil {
+		return -1, fmt.Errorf("get rows: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return -1, fmt.Errorf("sheet has no data")
+	}
+
+	for i, cell := range rows[0] {
+		if cell == colRef {
+			return i, nil
+		}
+	}
+
+	return -1, fmt.Errorf("column '%s' not found in header row", colRef)
 }
 
 // getUniqueValues returns unique values from a column.
