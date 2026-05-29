@@ -31,7 +31,7 @@ func NewServer() (*Server, error) {
 	s.mcpSrv = mcpSrv
 	s.registerTools()
 
-	slog.Info("MCP server created", "tools", 59)
+	slog.Info("MCP server created", "tools", 76)
 	return s, nil
 }
 
@@ -85,6 +85,12 @@ func (s *Server) registerTools() {
 
 	// Phase 3: Batch tools
 	s.registerBatchTools()
+
+	// Phase 4: View tools
+	s.registerViewTools()
+
+	// Phase 4: IO tools
+	s.registerIOTools()
 
 	slog.Debug("MCP tools registered")
 }
