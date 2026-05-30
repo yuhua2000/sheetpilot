@@ -78,15 +78,15 @@ func SetNumberFormat(f *excelize.File, sheet, cell, format string) error {
 // getNumFmtID returns the number format ID for common formats.
 func getNumFmtID(format string) int {
 	formats := map[string]int{
-		"General":    0,
-		"0":          1,
-		"0.00":       2,
-		"#,##0":      3,
-		"#,##0.00":   4,
-		"0%":         9,
-		"0.00%":      10,
-		"yyyy-mm-dd": 14,
-		"hh:mm:ss":   16,
+		"General":               0,
+		"0":                     1,
+		"0.00":                  2,
+		"#,##0":                 3,
+		"#,##0.00":              4,
+		"0%":                    9,
+		"0.00%":                 10,
+		"yyyy-mm-dd":            14,
+		"hh:mm:ss":              16,
 		"#,##0.00_);(#,##0.00)": 4,
 	}
 
@@ -135,7 +135,7 @@ func SetStyle(f *excelize.File, sheet, cell string, opts StyleOptions) error {
 	}
 	if opts.FontSize != "" {
 		size := 12.0
-		fmt.Sscanf(opts.FontSize, "%f", &size)
+		_, _ = fmt.Sscanf(opts.FontSize, "%f", &size)
 		font.Size = size
 		hasFont = true
 	}
@@ -308,9 +308,11 @@ func FormatAsTable(f *excelize.File, sheet, rangeRef, headerBg string, stripeRow
 		return fmt.Errorf("parse range: %w", err)
 	}
 
-	// Apply header style
-	headerRange := fmt.Sprintf("%s:%s", startCell, endCell[:1]+"1")
-	f.SetCellStyle(sheet, headerRange, headerRange, headerStyleID)
+	// Apply header style (first row of the range)
+	headerEnd := endCell[:1] + "1"
+	if err := f.SetCellStyle(sheet, startCell[:1]+"1", headerEnd, headerStyleID); err != nil {
+		return fmt.Errorf("apply header style: %w", err)
+	}
 
 	// Create data style with borders
 	dataStyle := excelize.Style{
@@ -330,8 +332,13 @@ func FormatAsTable(f *excelize.File, sheet, rangeRef, headerBg string, stripeRow
 		return fmt.Errorf("create data style: %w", err)
 	}
 
-	// Apply data style to entire range
-	f.SetCellStyle(sheet, rangeRef, rangeRef, dataStyleID)
+	// Apply data style to data rows only (skip header row)
+	startCol := startCell[:1]
+	endCol := endCell[:1]
+	_, endRow, _ := excelize.CellNameToCoordinates(endCell)
+	if err := f.SetCellStyle(sheet, startCol+"2", fmt.Sprintf("%s%d", endCol, endRow), dataStyleID); err != nil {
+		return fmt.Errorf("apply data style: %w", err)
+	}
 
 	// Add stripe rows if enabled
 	if stripeRows {
@@ -341,16 +348,16 @@ func FormatAsTable(f *excelize.File, sheet, rangeRef, headerBg string, stripeRow
 				Pattern: 1,
 				Color:   []string{"F2F2F2"},
 			},
-			Border: dataStyle.Border,
+			Border:    dataStyle.Border,
 			Alignment: dataStyle.Alignment,
 		}
 		stripeStyleID, err := f.NewStyle(&stripeStyle)
 		if err == nil {
 			// Apply stripe to alternating rows
-			rows, _ := f.GetRows(sheet)
-			for i := 2; i < len(rows); i += 2 {
-				rowRange := fmt.Sprintf("%s%d:%s%d", startCell, i, endCell[:1], i)
-				f.SetCellStyle(sheet, rowRange, rowRange, stripeStyleID)
+			for i := 2; i <= endRow; i += 2 {
+				if err := f.SetCellStyle(sheet, fmt.Sprintf("%s%d", startCol, i), fmt.Sprintf("%s%d", endCol, i), stripeStyleID); err != nil {
+					return fmt.Errorf("apply stripe style: %w", err)
+				}
 			}
 		}
 	}

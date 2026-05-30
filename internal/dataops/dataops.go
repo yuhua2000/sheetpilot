@@ -28,13 +28,17 @@ func AddComputedColumn(f *excelize.File, sheet, colName, formulaTmpl string) err
 
 	// Set header
 	headerCell := fmt.Sprintf("%s1", colName2)
-	f.SetCellValue(sheet, headerCell, colName)
+	if err := f.SetCellValue(sheet, headerCell, colName); err != nil {
+		return fmt.Errorf("set header: %w", err)
+	}
 
 	// Fill formulas for data rows
 	for row := 2; row <= len(rows); row++ {
 		cell := fmt.Sprintf("%s%d", colName2, row)
 		formula := replaceColumnRefs(formulaTmpl, rows[0], row)
-		f.SetCellFormula(sheet, cell, formula)
+		if err := f.SetCellFormula(sheet, cell, formula); err != nil {
+			return fmt.Errorf("set formula at %s: %w", cell, err)
+		}
 	}
 
 	return nil
@@ -51,7 +55,9 @@ func FillMissingValues(f *excelize.File, sheet, col, defaultValue string) error 
 		cell := fmt.Sprintf("%s%d", col, i+1)
 		val, _ := f.GetCellValue(sheet, cell)
 		if strings.TrimSpace(val) == "" {
-			f.SetCellValue(sheet, cell, defaultValue)
+			if err := f.SetCellValue(sheet, cell, defaultValue); err != nil {
+				return fmt.Errorf("set cell %s: %w", cell, err)
+			}
 		}
 	}
 
@@ -73,7 +79,9 @@ func ReplaceValues(f *excelize.File, sheet, col, oldValue, newValue string) erro
 	for i, row := range rows {
 		if colIdx-1 < len(row) && row[colIdx-1] == oldValue {
 			cell := fmt.Sprintf("%s%d", col, i+1)
-			f.SetCellValue(sheet, cell, newValue)
+			if err := f.SetCellValue(sheet, cell, newValue); err != nil {
+				return fmt.Errorf("set cell %s: %w", cell, err)
+			}
 		}
 	}
 
@@ -94,7 +102,9 @@ func CleanupSheet(f *excelize.File, sheet string) error {
 		if !isEmptyRow(row) {
 			for j, cell := range row {
 				col, _ := excelize.ColumnNumberToName(j + 1)
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, newRow), strings.TrimSpace(cell))
+				if err := f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, newRow), strings.TrimSpace(cell)); err != nil {
+					return fmt.Errorf("set cell: %w", err)
+				}
 			}
 			newRow++
 		}
@@ -141,7 +151,9 @@ func Deduplicate(f *excelize.File, sheet string, cols []string) error {
 	for i, row := range uniqueRows {
 		for j, cell := range row {
 			col, _ := excelize.ColumnNumberToName(j + 1)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), cell)
+			if err := f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), cell); err != nil {
+				return fmt.Errorf("set cell: %w", err)
+			}
 		}
 	}
 
@@ -149,7 +161,9 @@ func Deduplicate(f *excelize.File, sheet string, cols []string) error {
 	for i := len(uniqueRows); i < len(rows); i++ {
 		for j := range rows[0] {
 			col, _ := excelize.ColumnNumberToName(j + 1)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), nil)
+			if err := f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), nil); err != nil {
+				return fmt.Errorf("clear cell: %w", err)
+			}
 		}
 	}
 
@@ -205,9 +219,13 @@ func SortTable(f *excelize.File, sheet string, sortCols []string, ascending bool
 		for j, cell := range row {
 			col, _ := excelize.ColumnNumberToName(j + 1)
 			if i == 0 {
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), cell)
+				if err := f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), cell); err != nil {
+					return fmt.Errorf("set header: %w", err)
+				}
 			} else {
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), dataRows[i-1][j])
+				if err := f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), dataRows[i-1][j]); err != nil {
+					return fmt.Errorf("set cell: %w", err)
+				}
 			}
 		}
 	}
@@ -285,20 +303,30 @@ func GroupBy(f *excelize.File, sheet, groupCol, aggCol, aggFunc string) (string,
 
 	// Create result sheet
 	resultSheet := sheet + "_groupby"
-	f.NewSheet(resultSheet)
+	if _, err := f.NewSheet(resultSheet); err != nil {
+		return "", fmt.Errorf("create result sheet: %w", err)
+	}
 
 	// Write headers
-	f.SetCellValue(resultSheet, "A1", groupColName)
-	f.SetCellValue(resultSheet, "B1", fmt.Sprintf("%s(%s)", aggFunc, aggColName))
+	if err := f.SetCellValue(resultSheet, "A1", groupColName); err != nil {
+		return "", fmt.Errorf("set header: %w", err)
+	}
+	if err := f.SetCellValue(resultSheet, "B1", fmt.Sprintf("%s(%s)", aggFunc, aggColName)); err != nil {
+		return "", fmt.Errorf("set header: %w", err)
+	}
 
 	// Write group values and formulas
 	for i, group := range uniqueGroups {
 		row := i + 2
-		f.SetCellValue(resultSheet, fmt.Sprintf("A%d", row), group)
+		if err := f.SetCellValue(resultSheet, fmt.Sprintf("A%d", row), group); err != nil {
+			return "", fmt.Errorf("set group value: %w", err)
+		}
 
 		// Build Excel formula (SUMIFS, COUNTIFS, etc.)
 		formula := buildGroupByFormula(aggFunc, sheet, groupColLetter, aggColLetter, group, rows)
-		f.SetCellFormula(resultSheet, fmt.Sprintf("B%d", row), formula)
+		if err := f.SetCellFormula(resultSheet, fmt.Sprintf("B%d", row), formula); err != nil {
+			return "", fmt.Errorf("set formula: %w", err)
+		}
 	}
 
 	return resultSheet, nil
@@ -483,53 +511,6 @@ func matchCondition(cell, op, value string) bool {
 	}
 }
 
-func parseNumber(s string) float64 {
-	var f float64
-	fmt.Sscanf(s, "%f", &f)
-	return f
-}
-
-func formatNumber(f float64) string {
-	return fmt.Sprintf("%.2f", f)
-}
-
-func aggregate(values []float64, fn string) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-
-	switch fn {
-	case "sum":
-		sum := 0.0
-		for _, v := range values {
-			sum += v
-		}
-		return sum
-	case "avg":
-		return aggregate(values, "sum") / float64(len(values))
-	case "count":
-		return float64(len(values))
-	case "min":
-		min := values[0]
-		for _, v := range values[1:] {
-			if v < min {
-				min = v
-			}
-		}
-		return min
-	case "max":
-		max := values[0]
-		for _, v := range values[1:] {
-			if v > max {
-				max = v
-			}
-		}
-		return max
-	default:
-		return 0
-	}
-}
-
 // SplitSheet splits a sheet into multiple sheets based on a column value.
 func SplitSheet(f *excelize.File, sheet, col string) ([]string, error) {
 	rows, err := f.GetRows(sheet)
@@ -559,19 +540,25 @@ func SplitSheet(f *excelize.File, sheet, col string) ([]string, error) {
 	var result []string
 	for key, groupRows := range groups {
 		newSheet := fmt.Sprintf("%s_%s", sheet, key)
-		f.NewSheet(newSheet)
+		if _, err := f.NewSheet(newSheet); err != nil {
+			return nil, fmt.Errorf("create sheet %s: %w", newSheet, err)
+		}
 
 		// Write header
 		for j, cell := range rows[0] {
 			colName, _ := excelize.ColumnNumberToName(j + 1)
-			f.SetCellValue(newSheet, fmt.Sprintf("%s1", colName), cell)
+			if err := f.SetCellValue(newSheet, fmt.Sprintf("%s1", colName), cell); err != nil {
+				return nil, fmt.Errorf("set header: %w", err)
+			}
 		}
 
 		// Write data rows
 		for i, row := range groupRows {
 			for j, cell := range row {
 				colName, _ := excelize.ColumnNumberToName(j + 1)
-				f.SetCellValue(newSheet, fmt.Sprintf("%s%d", colName, i+2), cell)
+				if err := f.SetCellValue(newSheet, fmt.Sprintf("%s%d", colName, i+2), cell); err != nil {
+					return nil, fmt.Errorf("set cell: %w", err)
+				}
 			}
 		}
 
@@ -588,7 +575,9 @@ func MergeSheets(f *excelize.File, sheets []string, destSheet string) error {
 	}
 
 	// Create destination sheet
-	f.NewSheet(destSheet)
+	if _, err := f.NewSheet(destSheet); err != nil {
+		return fmt.Errorf("create destination sheet: %w", err)
+	}
 
 	// Track if header is written
 	headerWritten := false
@@ -604,26 +593,25 @@ func MergeSheets(f *excelize.File, sheets []string, destSheet string) error {
 			continue
 		}
 
-		startIdx := 0
 		if !headerWritten {
 			// Write header from first sheet
 			for j, cell := range rows[0] {
 				colName, _ := excelize.ColumnNumberToName(j + 1)
-				f.SetCellValue(destSheet, fmt.Sprintf("%s%d", colName, destRow), cell)
+				if err := f.SetCellValue(destSheet, fmt.Sprintf("%s%d", colName, destRow), cell); err != nil {
+					return fmt.Errorf("set header: %w", err)
+				}
 			}
 			headerWritten = true
 			destRow++
-			startIdx = 1
-		} else {
-			// Skip header for subsequent sheets
-			startIdx = 1
 		}
 
-		// Write data rows
-		for i := startIdx; i < len(rows); i++ {
+		// Write data rows (skip header for all sheets)
+		for i := 1; i < len(rows); i++ {
 			for j, cell := range rows[i] {
 				colName, _ := excelize.ColumnNumberToName(j + 1)
-				f.SetCellValue(destSheet, fmt.Sprintf("%s%d", colName, destRow), cell)
+				if err := f.SetCellValue(destSheet, fmt.Sprintf("%s%d", colName, destRow), cell); err != nil {
+					return fmt.Errorf("set cell: %w", err)
+				}
 			}
 			destRow++
 		}

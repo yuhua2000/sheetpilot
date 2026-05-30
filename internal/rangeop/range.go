@@ -161,7 +161,9 @@ func MoveRange(f *excelize.File, sheet, srcRange, dstCell string) error {
 	for r := startRow; r <= endRow; r++ {
 		for c := startCol; c <= endCol; c++ {
 			cell, _ := excelize.CoordinatesToCellName(c, r)
-			f.SetCellValue(sheet, cell, nil)
+			if err := f.SetCellValue(sheet, cell, nil); err != nil {
+				return fmt.Errorf("clear cell %s: %w", cell, err)
+			}
 		}
 	}
 
@@ -181,7 +183,9 @@ func FindReplace(f *excelize.File, sheet, find, replace, rangeRef string) (int, 
 			if strings.Contains(cell, find) {
 				newVal := strings.ReplaceAll(cell, find, replace)
 				col, _ := excelize.ColumnNumberToName(j + 1)
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), newVal)
+				if err := f.SetCellValue(sheet, fmt.Sprintf("%s%d", col, i+1), newVal); err != nil {
+					return 0, fmt.Errorf("set cell: %w", err)
+				}
 				count++
 			}
 		}

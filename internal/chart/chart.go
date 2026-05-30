@@ -11,44 +11,44 @@ import (
 type ChartType string
 
 const (
-	ChartTypeBar    ChartType = "bar"
-	ChartTypeLine   ChartType = "line"
-	ChartTypePie    ChartType = "pie"
+	ChartTypeBar     ChartType = "bar"
+	ChartTypeLine    ChartType = "line"
+	ChartTypePie     ChartType = "pie"
 	ChartTypeScatter ChartType = "scatter"
 )
 
 // ChartInfo contains information about a chart to create.
 type ChartInfo struct {
-	Type    ChartType `json:"type"`
-	Title   string    `json:"title"`
-	XAxis   string    `json:"x_axis"`
-	YAxis   string    `json:"y_axis"`
-	Series  []Series  `json:"series"`
+	Type   ChartType `json:"type"`
+	Title  string    `json:"title"`
+	XAxis  string    `json:"x_axis"`
+	YAxis  string    `json:"y_axis"`
+	Series []Series  `json:"series"`
 }
 
 // Series represents a data series in a chart.
 type Series struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
 	XValues string `json:"x_values"`
 	YValues string `json:"y_values"`
 }
 
 // ChartRecommendation contains chart type recommendations based on data analysis.
 type ChartRecommendation struct {
-	RecommendedType ChartType `json:"recommended_type"`
-	Reason          string    `json:"reason"`
+	RecommendedType ChartType   `json:"recommended_type"`
+	Reason          string      `json:"reason"`
 	Alternatives    []ChartType `json:"alternatives"`
 	DataSummary     DataSummary `json:"data_summary"`
 }
 
 // DataSummary contains summary information about the data.
 type DataSummary struct {
-	RowCount    int        `json:"row_count"`
-	ColCount    int        `json:"col_count"`
-	ColumnTypes []ColType  `json:"column_types"`
-	HasDate     bool       `json:"has_date"`
-	HasCategory bool       `json:"has_category"`
-	HasNumeric  bool       `json:"has_numeric"`
+	RowCount    int       `json:"row_count"`
+	ColCount    int       `json:"col_count"`
+	ColumnTypes []ColType `json:"column_types"`
+	HasDate     bool      `json:"has_date"`
+	HasCategory bool      `json:"has_category"`
+	HasNumeric  bool      `json:"has_numeric"`
 }
 
 // ColType represents column type information.

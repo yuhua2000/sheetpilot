@@ -23,7 +23,9 @@ func ExportCSV(f *excelize.File, sheet, outputPath string) error {
 	defer file.Close()
 
 	// Write BOM for UTF-8
-	file.Write([]byte{0xEF, 0xBB, 0xBF})
+	if _, err := file.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+		return fmt.Errorf("write BOM: %w", err)
+	}
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
@@ -52,7 +54,9 @@ func ImportCSV(f *excelize.File, csvPath, sheet string) error {
 		// BOM found, continue reading
 	} else {
 		// No BOM, seek back
-		file.Seek(0, 0)
+		if _, err := file.Seek(0, 0); err != nil {
+			return fmt.Errorf("seek file: %w", err)
+		}
 	}
 
 	reader := csv.NewReader(file)
@@ -71,7 +75,9 @@ func ImportCSV(f *excelize.File, csvPath, sheet string) error {
 		}
 	}
 	if !exists {
-		f.NewSheet(sheet)
+		if _, err := f.NewSheet(sheet); err != nil {
+			return fmt.Errorf("create sheet: %w", err)
+		}
 	}
 
 	// Write data
@@ -79,7 +85,9 @@ func ImportCSV(f *excelize.File, csvPath, sheet string) error {
 		for j, cell := range row {
 			colName, _ := excelize.ColumnNumberToName(j + 1)
 			cellRef := fmt.Sprintf("%s%d", colName, i+1)
-			f.SetCellValue(sheet, cellRef, cell)
+			if err := f.SetCellValue(sheet, cellRef, cell); err != nil {
+				return fmt.Errorf("set cell %s: %w", cellRef, err)
+			}
 		}
 	}
 
@@ -109,7 +117,7 @@ func ExportJSON(f *excelize.File, sheet string) (string, error) {
 				if j > 0 {
 					result.WriteString(", ")
 				}
-				result.WriteString(fmt.Sprintf("\"%s\": \"%s\"", headers[j], escapeJSON(cell)))
+				fmt.Fprintf(&result, "\"%s\": \"%s\"", headers[j], escapeJSON(cell))
 			}
 		}
 		result.WriteString("}")

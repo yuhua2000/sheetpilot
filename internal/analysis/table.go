@@ -28,11 +28,11 @@ type ColumnType struct {
 
 // SheetOverview contains a summary of the sheet.
 type SheetOverview struct {
-	SheetName string        `json:"sheet_name"`
-	RowCount  int           `json:"row_count"`
-	ColCount  int           `json:"col_count"`
-	Columns   []ColumnType  `json:"columns"`
-	Samples   [][]string    `json:"samples"`
+	SheetName string       `json:"sheet_name"`
+	RowCount  int          `json:"row_count"`
+	ColCount  int          `json:"col_count"`
+	Columns   []ColumnType `json:"columns"`
+	Samples   [][]string   `json:"samples"`
 }
 
 // GetTableInfo detects table boundaries and returns table information.

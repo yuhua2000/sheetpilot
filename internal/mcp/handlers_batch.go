@@ -116,13 +116,13 @@ func (s *Server) getToolHandler(name string) func(context.Context, mcp.CallToolR
 		"get_workbook_info": s.handleGetWorkbookInfo,
 
 		// Sheet
-		"list_sheets":       s.handleListSheets,
-		"create_sheet":      s.handleCreateSheet,
-		"delete_sheet":      s.handleDeleteSheet,
-		"rename_sheet":      s.handleRenameSheet,
-		"copy_sheet":        s.handleCopySheet,
-		"set_active_sheet":  s.handleSetActiveSheet,
-		"get_sheet_info":    s.handleGetSheetInfo,
+		"list_sheets":      s.handleListSheets,
+		"create_sheet":     s.handleCreateSheet,
+		"delete_sheet":     s.handleDeleteSheet,
+		"rename_sheet":     s.handleRenameSheet,
+		"copy_sheet":       s.handleCopySheet,
+		"set_active_sheet": s.handleSetActiveSheet,
+		"get_sheet_info":   s.handleGetSheetInfo,
 
 		// Cell
 		"get_cell":   s.handleGetCell,
@@ -130,15 +130,15 @@ func (s *Server) getToolHandler(name string) func(context.Context, mcp.CallToolR
 		"clear_cell": s.handleClearCell,
 
 		// Range
-		"get_range":        s.handleGetRange,
-		"set_range":        s.handleSetRange,
-		"append_rows":      s.handleAppendRows,
-		"insert_rows":      s.handleInsertRows,
-		"delete_rows":      s.handleDeleteRows,
-		"insert_columns":   s.handleInsertCols,
-		"delete_columns":   s.handleDeleteCols,
-		"copy_range":       s.handleCopyRange,
-		"move_range":       s.handleMoveRange,
+		"get_range":      s.handleGetRange,
+		"set_range":      s.handleSetRange,
+		"append_rows":    s.handleAppendRows,
+		"insert_rows":    s.handleInsertRows,
+		"delete_rows":    s.handleDeleteRows,
+		"insert_columns": s.handleInsertCols,
+		"delete_columns": s.handleDeleteCols,
+		"copy_range":     s.handleCopyRange,
+		"move_range":     s.handleMoveRange,
 
 		// Data ops
 		"add_computed_column": s.handleAddComputedColumn,
