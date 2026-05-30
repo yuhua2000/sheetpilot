@@ -1,0 +1,47 @@
+version: "2"
+
+output:
+  formats:
+    text:
+      path: stdout
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocheckcompilerdirectives
+    - gomoddirectives
+    - govet
+    - ineffassign
+    - staticcheck
+    - unconvert
+    - unused
+    - wastedassign
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - _test\.go$
+      - vendor
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/yuhua2000/sheetpilot
+  exclusions:
+    generated: lax
+    paths:
+      - _test\.go$
+      - vendor
