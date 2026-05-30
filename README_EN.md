@@ -19,8 +19,36 @@ A Go-based MCP (Model Context Protocol) server that enables AI to operate Excel 
 
 ### Install
 
+**Option 1: go install (recommended)**
+
 ```bash
-git clone https://github.com/yuhua2000/excelMcp.git
+go install github.com/yuhua2000/sheetpilot@latest
+```
+
+**Option 2: Download pre-built binary**
+
+Download from [Releases](https://github.com/yuhua2000/sheetpilot/releases):
+
+| Platform | Filename |
+|----------|----------|
+| Linux x86_64 | `sheetpilot-linux-amd64` |
+| Linux ARM64 | `sheetpilot-linux-arm64` |
+| macOS Intel | `sheetpilot-darwin-amd64` |
+| macOS Apple Silicon | `sheetpilot-darwin-arm64` |
+| Windows x86_64 | `sheetpilot-windows-amd64.exe` |
+| Windows ARM64 | `sheetpilot-windows-arm64.exe` |
+
+Set executable permission (Linux/macOS):
+
+```bash
+chmod +x sheetpilot-*
+mv sheetpilot-* /usr/local/bin/sheetpilot
+```
+
+**Option 3: Build from source**
+
+```bash
+git clone https://github.com/yuhua2000/sheetpilot.git
 cd excelMcp
 go build -o sheetpilot .
 ```

@@ -19,8 +19,36 @@
 
 ### 安装
 
+**方式一：go install（推荐）**
+
 ```bash
-git clone https://github.com/yuhua2000/excelMcp.git
+go install github.com/yuhua2000/sheetpilot@latest
+```
+
+**方式二：下载预编译二进制**
+
+从 [Releases](https://github.com/yuhua2000/sheetpilot/releases) 页面下载对应平台的二进制文件：
+
+| 平台 | 文件名 |
+|------|--------|
+| Linux x86_64 | `sheetpilot-linux-amd64` |
+| Linux ARM64 | `sheetpilot-linux-arm64` |
+| macOS Intel | `sheetpilot-darwin-amd64` |
+| macOS Apple Silicon | `sheetpilot-darwin-arm64` |
+| Windows x86_64 | `sheetpilot-windows-amd64.exe` |
+| Windows ARM64 | `sheetpilot-windows-arm64.exe` |
+
+下载后赋予执行权限（Linux/macOS）：
+
+```bash
+chmod +x sheetpilot-*
+mv sheetpilot-* /usr/local/bin/sheetpilot
+```
+
+**方式三：源码编译**
+
+```bash
+git clone https://github.com/yuhua2000/sheetpilot.git
 cd excelMcp
 go build -o sheetpilot .
 ```
