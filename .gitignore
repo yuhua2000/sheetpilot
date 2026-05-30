@@ -65,3 +65,4 @@ go.work
 *.log
 sheetpilot
 bin/*
+.mcp.json
